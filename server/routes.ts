@@ -221,11 +221,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Enhanced leaderboard endpoint with filtering
+  // Enhanced leaderboard endpoint with filtering - supports game points and best single game categories
   app.get('/api/game/leaderboard', [
     query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Invalid limit'),
     query('timeframe').optional().isIn(['daily', 'weekly', 'monthly', 'all']).withMessage('Invalid timeframe'),
-    query('category').optional().isIn(['score', 'level', 'enemies']).withMessage('Invalid category'),
+    query('category').optional().isIn(['score', 'level', 'enemies', 'totalScore', 'gamePoints', 'bestSingleGame']).withMessage('Invalid category'),
     handleValidationErrors
   ], async (req: Request, res: Response) => {
     try {
@@ -285,6 +285,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(stats);
     } catch (error) {
       console.error('Player stats error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ========== GAME POINTS SYSTEM ENDPOINTS ==========
+
+  // Get game points balance for authenticated user
+  app.get('/api/game-points/balance', authenticateToken, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      const balance = await storage.getGamePointsBalance?.(userId);
+      res.json({
+        available: balance?.available || 0,
+        total: balance?.total || 0,
+        redeemed: balance?.redeemed || 0
+      });
+    } catch (error) {
+      console.error('Game points balance error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get game points history for authenticated user
+  app.get('/api/game-points/history', [
+    authenticateToken,
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Invalid limit'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      const limit = parseInt(req.query.limit as string) || 50;
+      const history = await storage.getGamePointsHistory?.(userId, limit) || [];
+      res.json({ history, limit });
+    } catch (error) {
+      console.error('Game points history error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Redeem game points (convert to StarMint tokens or other rewards)
+  app.post('/api/game-points/redeem', [
+    authenticateToken,
+    body('pointsToRedeem').isInt({ min: 1 }).withMessage('Points to redeem must be at least 1'),
+    body('redemptionType').isIn(['starmint_token', 'game_credits', 'nft_discount', 'power_ups']).withMessage('Invalid redemption type'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      const { pointsToRedeem, redemptionType } = req.body;
+
+      // Check balance before redeeming
+      const balance = await storage.getGamePointsBalance?.(userId);
+      if (!balance || balance.available < pointsToRedeem) {
+        return res.status(400).json({ error: 'Insufficient game points' });
+      }
+
+      const redemption = await storage.redeemGamePoints?.(userId, pointsToRedeem, redemptionType);
+      
+      // Get updated balance
+      const updatedBalance = await storage.getGamePointsBalance?.(userId);
+
+      res.json({
+        message: 'Points redeemed successfully',
+        redemption,
+        newBalance: {
+          available: updatedBalance?.available || 0,
+          total: updatedBalance?.total || 0,
+          redeemed: updatedBalance?.redeemed || 0
+        }
+      });
+    } catch (error) {
+      console.error('Game points redemption error:', error);
+      if (error instanceof Error && error.message === 'Insufficient game points') {
+        return res.status(400).json({ error: 'Insufficient game points' });
+      }
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get game points redemption history
+  app.get('/api/game-points/redemptions', [
+    authenticateToken,
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Invalid limit'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+      }
+
+      const limit = parseInt(req.query.limit as string) || 50;
+      const redemptions = await storage.getGamePointsRedemptions?.(userId, limit) || [];
+      res.json({ redemptions, limit });
+    } catch (error) {
+      console.error('Game points redemptions error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -641,6 +749,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         accuracy,
         gameData: null, // Could store encrypted game replay data
         isValid: true,
+        pointsEarned: storage.calculateGamePoints?.(score, level, 1.0) || 0,
       });
 
       // Fetch updated stats from DB (if saveGameSession doesn’t return them)

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, desc, and, gte, lte, ilike, or, sql as drizzleSql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, ilike, or, sql as drizzleSql, max } from "drizzle-orm";
 import { 
   users, 
   playerStats, 
@@ -15,6 +15,8 @@ import {
   nftMints,
   nftMintRequests,
   nftStats,
+  gamePointsHistory,
+  gamePointsRedemptions,
   type User, 
   type InsertUser, 
   type HighScore,
@@ -32,7 +34,11 @@ import {
   type NftMintRequest,
   type NftStats,
   type InsertNftMint,
-  type InsertNftMintRequest
+  type InsertNftMintRequest,
+  type GamePointsHistory,
+  type GamePointsRedemption,
+  type InsertGamePointsHistory,
+  type InsertGamePointsRedemption
 } from "@shared/schema";
 
 
@@ -66,6 +72,14 @@ export interface IStorage {
   updateSwapPoints(userId: number, pointsToAdd: number, swapVolumeUsd: string): Promise<SwapPoints>;
   redeemPoints(userId: number, pointsToRedeem: number, redemptionType: string): Promise<PointsRedemption>;
   getPointsRedemptions(userId: number, limit?: number): Promise<PointsRedemption[]>;
+  
+  // Game points system methods
+  calculateGamePoints(score: number, level: number, bonusMultiplier?: number): number;
+  awardGamePoints(userId: number, gameSessionId: number, score: number, level: number, bonusMultiplier?: number, bonusReason?: string): Promise<GamePointsHistory>;
+  getGamePointsHistory(userId: number, limit?: number): Promise<GamePointsHistory[]>;
+  redeemGamePoints(userId: number, pointsToRedeem: number, redemptionType: string): Promise<GamePointsRedemption>;
+  getGamePointsRedemptions(userId: number, limit?: number): Promise<GamePointsRedemption[]>;
+  getGamePointsBalance(userId: number): Promise<{ available: number; total: number; redeemed: number }>;
 }
 
 // Database connection is imported from db.ts
@@ -90,7 +104,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db.insert(users).values(insertUser).returning();
     const newUser = result[0];
     
-    // Initialize player stats for new user
+    // Initialize player stats for new user with game points fields
     await db.insert(playerStats).values({
       userId: newUser.id,
       totalScore: 0,
@@ -101,6 +115,10 @@ export class DatabaseStorage implements IStorage {
       streakDays: 1,
       socialShares: 0,
       friendsInvited: 0,
+      gamePoints: 0,
+      totalGamePoints: 0,
+      pointsRedeemed: 0,
+      bestSingleGameScore: 0,
     });
     
     return newUser;
@@ -118,27 +136,45 @@ export class DatabaseStorage implements IStorage {
   }
 
   async saveGameSession(userId: number, sessionData: Omit<GameSession, 'id' | 'userId' | 'playedAt'>): Promise<void> {
-    await db.insert(gameSessions).values({
+    // Calculate game points for this session
+    const pointsEarned = this.calculateGamePoints(sessionData.score, sessionData.level);
+    
+    // Insert game session with points
+    const [insertedSession] = await db.insert(gameSessions).values({
       userId,
       ...sessionData,
-    });
+      pointsEarned,
+    }).returning();
     
     // Update player stats
     const currentStats = await this.getPlayerStats(userId);
     if (currentStats) {
-      const updatedStats = {
+      const updatedStats: Partial<PlayerStats> = {
         gamesPlayed: currentStats.gamesPlayed + 1,
         totalScore: currentStats.totalScore + sessionData.score,
         enemiesDestroyed: currentStats.enemiesDestroyed + sessionData.enemiesKilled,
         timePlayedMinutes: currentStats.timePlayedMinutes + Math.round(sessionData.gameTime / 60000),
         lastPlayedAt: new Date(),
+        gamePoints: currentStats.gamePoints + pointsEarned,
+        totalGamePoints: currentStats.totalGamePoints + pointsEarned,
       };
       
+      // Update high score if new personal best
       if (sessionData.score > currentStats.highScore) {
-        (updatedStats as any).highScore = sessionData.score;
+        updatedStats.highScore = sessionData.score;
+      }
+      
+      // Update best single game score if new record
+      if (sessionData.score > currentStats.bestSingleGameScore) {
+        updatedStats.bestSingleGameScore = sessionData.score;
       }
       
       await this.updatePlayerStats(userId, updatedStats);
+      
+      // Record points history
+      if (insertedSession && pointsEarned > 0) {
+        await this.awardGamePoints(userId, insertedSession.id, sessionData.score, sessionData.level);
+      }
     }
   }
 
@@ -233,8 +269,27 @@ export class DatabaseStorage implements IStorage {
         break;
     }
     
+    // Determine sorting column based on category
+    const getOrderColumn = (cat: string) => {
+      switch (cat) {
+        case 'gamePoints':
+          return playerStats.totalGamePoints;
+        case 'bestSingleGame':
+          return playerStats.bestSingleGameScore;
+        case 'totalScore':
+          return playerStats.totalScore;
+        case 'level':
+          return playerStats.gamesPlayed;
+        case 'enemies':
+          return playerStats.enemiesDestroyed;
+        case 'score':
+        default:
+          return playerStats.highScore;
+      }
+    };
+    
     if (timeframe === 'all') {
-      // Get overall rankings
+      // Get overall rankings with all player stats fields
       return await db
         .select({
           userId: users.id,
@@ -247,13 +302,52 @@ export class DatabaseStorage implements IStorage {
           enemiesDestroyed: playerStats.enemiesDestroyed,
           gamesPlayed: playerStats.gamesPlayed,
           timePlayedMinutes: playerStats.timePlayedMinutes,
+          gamePoints: playerStats.totalGamePoints,
+          bestSingleGameScore: playerStats.bestSingleGameScore,
         })
         .from(playerStats)
         .innerJoin(users, eq(playerStats.userId, users.id))
-        .orderBy(desc(playerStats.highScore))
+        .orderBy(desc(getOrderColumn(category)))
         .limit(limit);
     } else {
-      // Get time-based rankings from game sessions
+      // For time-based filtering with gamePoints or bestSingleGame, we need a different approach
+      if (category === 'gamePoints' || category === 'bestSingleGame') {
+        // Get aggregated data from game sessions within the timeframe
+        const sessionData = await db
+          .select({
+            userId: users.id,
+            username: users.username,
+            displayName: users.displayName,
+            profilePicture: users.profilePicture,
+            totalPointsInPeriod: drizzleSql<number>`SUM(${gameSessions.pointsEarned})`,
+            bestScoreInPeriod: drizzleSql<number>`MAX(${gameSessions.score})`,
+            gamesInPeriod: drizzleSql<number>`COUNT(${gameSessions.id})`,
+          })
+          .from(gameSessions)
+          .innerJoin(users, eq(gameSessions.userId, users.id))
+          .where(dateFilter ? gte(gameSessions.playedAt, dateFilter) : undefined)
+          .groupBy(users.id, users.username, users.displayName, users.profilePicture)
+          .orderBy(
+            category === 'gamePoints' 
+              ? desc(drizzleSql<number>`SUM(${gameSessions.pointsEarned})`)
+              : desc(drizzleSql<number>`MAX(${gameSessions.score})`)
+          )
+          .limit(limit);
+        
+        // Transform to match expected format
+        return sessionData.map(row => ({
+          userId: row.userId,
+          username: row.username,
+          displayName: row.displayName,
+          profilePicture: row.profilePicture,
+          score: category === 'bestSingleGame' ? row.bestScoreInPeriod : 0,
+          gamePoints: row.totalPointsInPeriod || 0,
+          bestSingleGameScore: row.bestScoreInPeriod || 0,
+          gamesPlayed: row.gamesInPeriod || 0,
+        }));
+      }
+      
+      // Get time-based rankings from game sessions (standard categories)
       return await db
         .select({
           userId: users.id,
@@ -265,6 +359,7 @@ export class DatabaseStorage implements IStorage {
           enemiesKilled: gameSessions.enemiesKilled,
           gameTime: gameSessions.gameTime,
           playedAt: gameSessions.playedAt,
+          pointsEarned: gameSessions.pointsEarned,
         })
         .from(gameSessions)
         .innerJoin(users, eq(gameSessions.userId, users.id))
@@ -436,6 +531,116 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(pointsRedemptions.createdAt))
       .limit(limit);
   }
+
+  // ========== GAME POINTS SYSTEM METHODS ==========
+  
+  /**
+   * Calculate game points from score with bonuses
+   * Base conversion: 1 point per 100 score
+   * Level bonus: +10% per level (max 200%)
+   * Performance bonus multiplier applied on top
+   */
+  calculateGamePoints(score: number, level: number, bonusMultiplier: number = 1.0): number {
+    if (score <= 0) return 0;
+    
+    // Base conversion rate: 1 point per 100 score
+    const baseConversionRate = 0.01;
+    
+    // Level bonus: +10% per level (capped at 200% = level 20)
+    const levelBonus = Math.min(1 + (level * 0.1), 3.0);
+    
+    // Calculate base points
+    const basePoints = Math.floor(score * baseConversionRate * levelBonus);
+    
+    // Apply bonus multiplier (for achievements, streak bonuses, etc.)
+    const finalPoints = Math.floor(basePoints * bonusMultiplier);
+    
+    return Math.max(1, finalPoints); // Minimum 1 point for any valid game
+  }
+
+  async awardGamePoints(
+    userId: number, 
+    gameSessionId: number, 
+    score: number, 
+    level: number, 
+    bonusMultiplier: number = 1.0, 
+    bonusReason?: string
+  ): Promise<GamePointsHistory> {
+    const pointsEarned = this.calculateGamePoints(score, level, bonusMultiplier);
+    const conversionRate = 0.01; // Base rate
+    
+    const [history] = await db.insert(gamePointsHistory).values({
+      userId,
+      gameSessionId,
+      scoreEarned: score,
+      pointsEarned,
+      conversionRate,
+      bonusMultiplier,
+      bonusReason,
+    }).returning();
+    
+    return history;
+  }
+
+  async getGamePointsHistory(userId: number, limit: number = 50): Promise<GamePointsHistory[]> {
+    return await db.select()
+      .from(gamePointsHistory)
+      .where(eq(gamePointsHistory.userId, userId))
+      .orderBy(desc(gamePointsHistory.createdAt))
+      .limit(limit);
+  }
+
+  async redeemGamePoints(userId: number, pointsToRedeem: number, redemptionType: string): Promise<GamePointsRedemption> {
+    const stats = await this.getPlayerStats(userId);
+    
+    if (!stats || stats.gamePoints < pointsToRedeem) {
+      throw new Error('Insufficient game points');
+    }
+    
+    // Validate redemption type
+    const validTypes = ['starmint_token', 'game_credits', 'nft_discount', 'power_ups'];
+    if (!validTypes.includes(redemptionType)) {
+      throw new Error('Invalid redemption type');
+    }
+    
+    // Create redemption record
+    const [redemption] = await db.insert(gamePointsRedemptions).values({
+      userId,
+      pointsRedeemed: pointsToRedeem,
+      redemptionType,
+      status: 'pending',
+    }).returning();
+    
+    // Update player stats - deduct available points
+    await this.updatePlayerStats(userId, {
+      gamePoints: stats.gamePoints - pointsToRedeem,
+      pointsRedeemed: stats.pointsRedeemed + pointsToRedeem,
+    });
+    
+    return redemption;
+  }
+
+  async getGamePointsRedemptions(userId: number, limit: number = 50): Promise<GamePointsRedemption[]> {
+    return await db.select()
+      .from(gamePointsRedemptions)
+      .where(eq(gamePointsRedemptions.userId, userId))
+      .orderBy(desc(gamePointsRedemptions.createdAt))
+      .limit(limit);
+  }
+
+  async getGamePointsBalance(userId: number): Promise<{ available: number; total: number; redeemed: number }> {
+    const stats = await this.getPlayerStats(userId);
+    
+    if (!stats) {
+      return { available: 0, total: 0, redeemed: 0 };
+    }
+    
+    return {
+      available: stats.gamePoints || 0,
+      total: stats.totalGamePoints || 0,
+      redeemed: stats.pointsRedeemed || 0,
+    };
+  }
 }
 
 export class MemStorage implements IStorage {
@@ -498,7 +703,7 @@ export class MemStorage implements IStorage {
     if (currentStats) {
       this.playerStats.set(userId, { ...currentStats, ...stats, updatedAt: new Date() });
     } else {
-      // Create new stats
+      // Create new stats with game points fields
       const newStats: PlayerStats = {
         id: this.currentStatsId++,
         userId,
@@ -512,6 +717,10 @@ export class MemStorage implements IStorage {
         dailyLogins: 1,
         socialShares: 0,
         friendsInvited: 0,
+        gamePoints: 0,
+        totalGamePoints: 0,
+        pointsRedeemed: 0,
+        bestSingleGameScore: 0,
         lastLoginAt: new Date(),
         lastPlayedAt: null,
         updatedAt: new Date(),
@@ -683,6 +892,69 @@ export class MemStorage implements IStorage {
     return [];
   }
 
+  // ========== GAME POINTS SYSTEM METHODS ==========
+  
+  calculateGamePoints(score: number, level: number, bonusMultiplier: number = 1.0): number {
+    if (score <= 0) return 0;
+    const baseConversionRate = 0.01;
+    const levelBonus = Math.min(1 + (level * 0.1), 3.0);
+    const basePoints = Math.floor(score * baseConversionRate * levelBonus);
+    const finalPoints = Math.floor(basePoints * bonusMultiplier);
+    return Math.max(1, finalPoints);
+  }
+
+  async awardGamePoints(
+    userId: number, 
+    gameSessionId: number, 
+    score: number, 
+    level: number, 
+    bonusMultiplier: number = 1.0, 
+    bonusReason?: string
+  ): Promise<GamePointsHistory> {
+    const pointsEarned = this.calculateGamePoints(score, level, bonusMultiplier);
+    return {
+      id: 1,
+      userId,
+      gameSessionId,
+      scoreEarned: score,
+      pointsEarned,
+      conversionRate: 0.01,
+      bonusMultiplier,
+      bonusReason: bonusReason || null,
+      createdAt: new Date(),
+    } as GamePointsHistory;
+  }
+
+  async getGamePointsHistory(userId: number, limit?: number): Promise<GamePointsHistory[]> {
+    return [];
+  }
+
+  async redeemGamePoints(userId: number, pointsToRedeem: number, redemptionType: string): Promise<GamePointsRedemption> {
+    return {
+      id: 1,
+      userId,
+      pointsRedeemed: pointsToRedeem,
+      starmintReceived: null,
+      redemptionType,
+      txHash: null,
+      status: 'pending',
+      createdAt: new Date(),
+    } as GamePointsRedemption;
+  }
+
+  async getGamePointsRedemptions(userId: number, limit?: number): Promise<GamePointsRedemption[]> {
+    return [];
+  }
+
+  async getGamePointsBalance(userId: number): Promise<{ available: number; total: number; redeemed: number }> {
+    const stats = await this.getPlayerStats(userId);
+    return {
+      available: stats?.gamePoints || 0,
+      total: stats?.totalGamePoints || 0,
+      redeemed: stats?.pointsRedeemed || 0,
+    };
+  }
+
   // ========== NFT MINTING METHODS ==========
 
   async getUserByWalletAddress(walletAddress: string): Promise<User | undefined> {
@@ -700,7 +972,7 @@ export class MemStorage implements IStorage {
     
     const newUser = result[0];
     
-    // Initialize player stats
+    // Initialize player stats with game points fields
     await db.insert(playerStats).values({
       userId: newUser.id,
       totalScore: 0,
@@ -711,6 +983,10 @@ export class MemStorage implements IStorage {
       streakDays: 1,
       socialShares: 0,
       friendsInvited: 0,
+      gamePoints: 0,
+      totalGamePoints: 0,
+      pointsRedeemed: 0,
+      bestSingleGameScore: 0,
     });
     
     return newUser;

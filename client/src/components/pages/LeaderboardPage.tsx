@@ -17,6 +17,8 @@ interface LeaderboardEntry {
   enemiesDestroyed?: number;
   gamesPlayed?: number;
   timePlayedMinutes?: number;
+  gamePoints?: number;
+  bestSingleGameScore?: number;
 }
 
 interface LeaderboardMetadata {
@@ -27,7 +29,7 @@ interface LeaderboardMetadata {
 }
 
 type TimeframeFilter = 'daily' | 'weekly' | 'monthly' | 'all';
-type CategoryFilter = 'score' | 'level' | 'enemies';
+type CategoryFilter = 'score' | 'level' | 'enemies' | 'totalScore' | 'gamePoints' | 'bestSingleGame';
 
 function ProfilePicture({ src, alt, className, showBorder = true }: { src?: string; alt: string; className: string; showBorder?: boolean }) {
   const [imageError, setImageError] = useState(false);
@@ -117,6 +119,9 @@ export default function LeaderboardPage({ onBack }: LeaderboardPageProps) {
       case 'score': return 'High Score';
       case 'level': return 'Level Reached';
       case 'enemies': return 'Enemies Destroyed';
+      case 'totalScore': return 'Total Score';
+      case 'gamePoints': return 'Game Points';
+      case 'bestSingleGame': return 'Best Single Game';
       default: return 'Score';
     }
   };
@@ -126,6 +131,9 @@ export default function LeaderboardPage({ onBack }: LeaderboardPageProps) {
       case 'score': return entry.score?.toLocaleString() || '0';
       case 'level': return entry.level?.toString() || '1';
       case 'enemies': return entry.enemiesDestroyed?.toLocaleString() || '0';
+      case 'totalScore': return entry.totalScore?.toLocaleString() || '0';
+      case 'gamePoints': return entry.gamePoints?.toLocaleString() || '0';
+      case 'bestSingleGame': return entry.bestSingleGameScore?.toLocaleString() || '0';
       default: return entry.score?.toLocaleString() || '0';
     }
   };
@@ -236,7 +244,7 @@ export default function LeaderboardPage({ onBack }: LeaderboardPageProps) {
               <div>
                 <label className="text-sm text-gray-300 mb-2 block">Category</label>
                 <div className="flex flex-wrap gap-2">
-                  {(['score', 'level', 'enemies'] as CategoryFilter[]).map((cat) => (
+                  {(['score', 'level', 'enemies', 'totalScore', 'gamePoints', 'bestSingleGame'] as CategoryFilter[]).map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setCategory(cat)}
@@ -249,6 +257,9 @@ export default function LeaderboardPage({ onBack }: LeaderboardPageProps) {
                       {cat === 'score' && <Trophy className="w-4 h-4 inline mr-1" />}
                       {cat === 'level' && <TrendingUp className="w-4 h-4 inline mr-1" />}
                       {cat === 'enemies' && <Zap className="w-4 h-4 inline mr-1" />}
+                      {cat === 'totalScore' && <Star className="w-4 h-4 inline mr-1" />}
+                      {cat === 'gamePoints' && <Star className="w-4 h-4 inline mr-1" />}
+                      {cat === 'bestSingleGame' && <Trophy className="w-4 h-4 inline mr-1" />}
                       {getCategoryLabel(cat)}
                     </button>
                   ))}

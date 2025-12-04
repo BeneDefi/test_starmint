@@ -27,6 +27,10 @@ export const playerStats = pgTable("player_stats", {
   dailyLogins: integer("daily_logins").default(1).notNull(),
   socialShares: integer("social_shares").default(0).notNull(),
   friendsInvited: integer("friends_invited").default(0).notNull(),
+  gamePoints: integer("game_points").default(0).notNull(),
+  totalGamePoints: integer("total_game_points").default(0).notNull(),
+  pointsRedeemed: integer("points_redeemed").default(0).notNull(),
+  bestSingleGameScore: integer("best_single_game_score").default(0).notNull(),
   lastLoginAt: timestamp("last_login_at").defaultNow().notNull(),
   lastPlayedAt: timestamp("last_played_at"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -44,6 +48,7 @@ export const gameSessions = pgTable("game_sessions", {
   accuracy: real("accuracy"), // percentage
   gameData: json("game_data"), // encrypted game state for validation
   isValid: boolean("is_valid").default(true).notNull(),
+  pointsEarned: integer("points_earned").default(0).notNull(),
   playedAt: timestamp("played_at").defaultNow().notNull(),
 });
 
@@ -118,6 +123,49 @@ export const purchaseHistory = pgTable("purchase_history", {
 
 export type DailyLogin = typeof dailyLogins.$inferSelect;
 export type PurchaseHistory = typeof purchaseHistory.$inferSelect;
+
+// ========== GAME POINTS SYSTEM TABLES ==========
+
+// Game points conversion history - tracks all score to points conversions
+export const gamePointsHistory = pgTable("game_points_history", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  gameSessionId: integer("game_session_id").references(() => gameSessions.id),
+  scoreEarned: integer("score_earned").notNull(),
+  pointsEarned: integer("points_earned").notNull(),
+  conversionRate: real("conversion_rate").notNull(),
+  bonusMultiplier: real("bonus_multiplier").default(1.0).notNull(),
+  bonusReason: text("bonus_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Game points redemption history - tracks points to StarMint token conversions
+export const gamePointsRedemptions = pgTable("game_points_redemptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  pointsRedeemed: integer("points_redeemed").notNull(),
+  starmintReceived: text("starmint_received"),
+  redemptionType: text("redemption_type").notNull(),
+  txHash: text("tx_hash"),
+  status: text("status").default("pending").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type GamePointsHistory = typeof gamePointsHistory.$inferSelect;
+export type GamePointsRedemption = typeof gamePointsRedemptions.$inferSelect;
+
+export const insertGamePointsHistorySchema = createInsertSchema(gamePointsHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertGamePointsRedemptionSchema = createInsertSchema(gamePointsRedemptions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertGamePointsHistory = z.infer<typeof insertGamePointsHistorySchema>;
+export type InsertGamePointsRedemption = z.infer<typeof insertGamePointsRedemptionSchema>;
 
 // ========== SWAP SYSTEM TABLES ==========
 
