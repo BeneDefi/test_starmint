@@ -6,6 +6,16 @@ STARMINT is a cutting-edge space shooter game that blends classic arcade gamepla
 
 ## Recent Changes (December 4, 2024)
 
+### HighScoreNFT System Migration
+- ✅ Migrated from simple ScoreNFT to advanced HighScoreNFT with backend verification
+- ✅ Added HighScoreNFT ABI and constants to wagmiConfig.ts (legacy ScoreNFT preserved)
+- ✅ Created useHighScoreMint hook integrating useNftMinting store with wagmi contract calls
+- ✅ Updated ShareOrMintModal with rarity display, mint fees, and full game data
+- ✅ Implemented rarity tiers: Common, Uncommon, Rare, Epic, Legendary based on score
+- ✅ Added mint fee display (~$0.10 in ETH) with real-time USD conversion
+- ✅ Added fallback "Coming Soon" UI when HighScoreNFT contract not yet deployed
+- ✅ Full game data passed to modal: score, level, enemies defeated, game time
+
 ### Swap System Implementation
 - ✅ Created SwapRouterExtension smart contract with Uniswap V3 integration
 - ✅ Implemented fee logic: $0.10 flat for swaps <$500, 0.1% for swaps ≥$500
