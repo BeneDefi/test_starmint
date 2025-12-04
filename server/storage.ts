@@ -135,7 +135,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(playerStats.userId, userId));
   }
 
-  async saveGameSession(userId: number, sessionData: Omit<GameSession, 'id' | 'userId' | 'playedAt'>): Promise<void> {
+  async saveGameSession(userId: number, sessionData: Omit<GameSession, 'id' | 'userId' | 'playedAt'>): Promise<PlayerStats | undefined> {
     // Calculate game points for this session
     const pointsEarned = this.calculateGamePoints(sessionData.score, sessionData.level);
     
@@ -155,8 +155,8 @@ export class DatabaseStorage implements IStorage {
         enemiesDestroyed: currentStats.enemiesDestroyed + sessionData.enemiesKilled,
         timePlayedMinutes: currentStats.timePlayedMinutes + Math.round(sessionData.gameTime / 60000),
         lastPlayedAt: new Date(),
-        gamePoints: currentStats.gamePoints + pointsEarned,
-        totalGamePoints: currentStats.totalGamePoints + pointsEarned,
+        gamePoints: (currentStats.gamePoints || 0) + pointsEarned,
+        totalGamePoints: (currentStats.totalGamePoints || 0) + pointsEarned,
       };
       
       // Update high score if new personal best
@@ -165,7 +165,7 @@ export class DatabaseStorage implements IStorage {
       }
       
       // Update best single game score if new record
-      if (sessionData.score > currentStats.bestSingleGameScore) {
+      if (sessionData.score > (currentStats.bestSingleGameScore || 0)) {
         updatedStats.bestSingleGameScore = sessionData.score;
       }
       
@@ -175,7 +175,12 @@ export class DatabaseStorage implements IStorage {
       if (insertedSession && pointsEarned > 0) {
         await this.awardGamePoints(userId, insertedSession.id, sessionData.score, sessionData.level);
       }
+      
+      // Return the updated player stats
+      return await this.getPlayerStats(userId);
     }
+    
+    return undefined;
   }
 
   async getPlayerRankings(userId: number): Promise<PlayerRanking[]> {
@@ -730,12 +735,16 @@ export class MemStorage implements IStorage {
     }
   }
 
-  async saveGameSession(userId: number, sessionData: Omit<GameSession, 'id' | 'userId' | 'playedAt'>): Promise<void> {
+  async saveGameSession(userId: number, sessionData: Omit<GameSession, 'id' | 'userId' | 'playedAt'>): Promise<PlayerStats | undefined> {
+    // Calculate game points for this session
+    const pointsEarned = this.calculateGamePoints(sessionData.score, sessionData.level);
+    
     const session: GameSession = {
       id: this.currentSessionId++,
       userId,
       playedAt: new Date(),
-      ...sessionData
+      ...sessionData,
+      pointsEarned,
     };
     
     const userSessions = this.gameSessions.get(userId) || [];
@@ -745,20 +754,32 @@ export class MemStorage implements IStorage {
     // Update player stats
     const currentStats = this.playerStats.get(userId);
     if (currentStats) {
-      const updatedStats = {
+      const updatedStats: Partial<PlayerStats> = {
         gamesPlayed: currentStats.gamesPlayed + 1,
         totalScore: currentStats.totalScore + sessionData.score,
         enemiesDestroyed: currentStats.enemiesDestroyed + sessionData.enemiesKilled,
         timePlayedMinutes: currentStats.timePlayedMinutes + Math.round(sessionData.gameTime / 60000),
         lastPlayedAt: new Date(),
+        gamePoints: (currentStats.gamePoints || 0) + pointsEarned,
+        totalGamePoints: (currentStats.totalGamePoints || 0) + pointsEarned,
       };
       
       if (sessionData.score > currentStats.highScore) {
-        (updatedStats as any).highScore = sessionData.score;
+        updatedStats.highScore = sessionData.score;
+      }
+      
+      // Update best single game score if new record
+      if (sessionData.score > (currentStats.bestSingleGameScore || 0)) {
+        updatedStats.bestSingleGameScore = sessionData.score;
       }
       
       await this.updatePlayerStats(userId, updatedStats);
+      
+      // Return the updated player stats
+      return this.playerStats.get(userId);
     }
+    
+    return undefined;
   }
 
   async getPlayerRankings(): Promise<PlayerRanking[]> {
