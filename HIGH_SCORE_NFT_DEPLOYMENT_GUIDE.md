@@ -106,12 +106,12 @@ source .env
 - **$0.10 USD mint fee** (paid in ETH, sent to treasury)
 - **Dynamic on-chain SVG** - Unique visual for each score
 - **Rich metadata** - Score, level, enemies defeated, game time, rarity
-- **Rarity tiers** based on score:
-  - Common: < 10,000 points
-  - Uncommon: 10,000+ points
-  - Rare: 25,000+ points
-  - Epic: 50,000+ points
-  - Legendary: 100,000+ points
+- **Rarity tiers** based on score (matching frontend implementation):
+  - Common: 0 - 999 points
+  - Uncommon: 1,000 - 4,999 points
+  - Rare: 5,000 - 9,999 points
+  - Epic: 10,000 - 24,999 points
+  - Legendary: 25,000+ points
 
 ### Fee Structure
 - All mints cost $0.10 USD equivalent in ETH
@@ -199,19 +199,41 @@ Replace `YOUR_CONTRACT_ADDRESS` with the deployed contract address.
 
 ## Post-Deployment Configuration
 
-### Step 1: Update your application environment
+### Step 1: Update your application environment (Replit)
 
-Add these environment variables to your application:
+In your Replit project, go to the **Secrets** tab and add:
 
-```env
-# High Score NFT Contract Address
-HIGH_SCORE_NFT_ADDRESS=0xYourDeployedContractAddress
+| Secret Key | Value | Description |
+|------------|-------|-------------|
+| `HIGH_SCORE_NFT_ADDRESS` | `0xYourDeployedContractAddress` | The deployed contract address |
+| `NFT_MINT_SIGNER_KEY` | Your signer private key (no 0x prefix) | Must match MINT_SIGNER_ADDRESS used in deployment |
 
-# Mint signer private key (for backend signing)
-NFT_MINT_SIGNER_KEY=your_mint_signer_private_key
+**Important:** 
+- The `HIGH_SCORE_NFT_ADDRESS` enables the NFT minting feature automatically
+- The `NFT_MINT_SIGNER_KEY` must correspond to the same wallet address you set as `MINT_SIGNER_ADDRESS` during deployment
+
+### Step 2: Restart the application
+
+After adding the secrets, restart your Replit workflow to pick up the new environment variables.
+
+### Step 3: Verify the app configuration
+
+Visit your app's NFT config endpoint to verify:
+```
+GET /api/nft/config
 ```
 
-### Step 2: Verify configuration
+Should return:
+```json
+{
+  "contractAddress": "0xYourDeployedContractAddress",
+  "isEnabled": true,
+  "chainId": 8453,
+  "chainName": "Base"
+}
+```
+
+### Step 4: Verify contract configuration
 
 Check that everything is configured correctly:
 
@@ -381,15 +403,65 @@ If you encounter issues:
 
 ---
 
+## How the Minting Flow Works
+
+After deployment, the app uses a secure backend-verified minting flow:
+
+### 1. Game Ends
+When a player finishes a game, the Game Over modal shows their score, level, enemies defeated, and game time.
+
+### 2. Rarity Displayed
+The frontend calculates rarity based on score and shows a badge:
+- Common (gray): 0 - 999 points
+- Uncommon (green): 1,000 - 4,999 points  
+- Rare (blue): 5,000 - 9,999 points
+- Epic (purple): 10,000 - 24,999 points
+- Legendary (gold): 25,000+ points
+
+### 3. Mint Fee Displayed
+The modal fetches the current mint fee (~$0.10 in ETH) from the backend and displays it.
+
+### 4. User Clicks "Mint NFT"
+The frontend:
+1. Requests a signed mint signature from the backend (`POST /api/nft/mint-request`)
+2. Backend verifies the game session was legitimate (anti-cheat)
+3. Backend signs the mint request with `NFT_MINT_SIGNER_KEY`
+4. Frontend calls the contract's `mintWithSignature()` function
+
+### 5. Transaction Confirmed
+After the transaction is confirmed on-chain:
+1. Frontend calls `POST /api/nft/mint-confirm` to record the mint
+2. User sees success message with links to BaseScan and OpenSea
+
+### Key Files in This Flow
+
+| File | Role |
+|------|------|
+| `client/src/components/ShareOrMintModal.tsx` | UI modal with mint button |
+| `client/src/hooks/useHighScoreMint.ts` | Hook that orchestrates the mint flow |
+| `client/src/lib/stores/useNftMinting.ts` | Zustand store for API calls |
+| `server/routes.ts` | Backend endpoints for signing and recording |
+| `contracts/HighScoreNFT.sol` | On-chain contract |
+
+---
+
 ## Summary Checklist
 
 - [ ] Installed Foundry
-- [ ] Created `.env` file with all required variables
+- [ ] Created `.env` file with all required variables:
+  - `PRIVATE_KEY` (deployer wallet)
+  - `TREASURY_ADDRESS` (receives mint fees)
+  - `MINT_SIGNER_ADDRESS` (backend signer public address)
+  - `BASESCAN_API_KEY` (for verification)
 - [ ] Built contracts successfully (`forge build`)
 - [ ] Ran dry-run simulation
 - [ ] Deployed to Base mainnet
 - [ ] Verified contract on BaseScan
-- [ ] Updated application environment variables
+- [ ] Added Replit secrets:
+  - `HIGH_SCORE_NFT_ADDRESS` (deployed contract)
+  - `NFT_MINT_SIGNER_KEY` (backend signer private key)
+- [ ] Restarted Replit workflow
+- [ ] Verified `/api/nft/config` returns `isEnabled: true`
 - [ ] Tested minting from frontend
 - [ ] Secured all private keys
 

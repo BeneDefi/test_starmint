@@ -89,10 +89,10 @@ interface NftMintingState {
 }
 
 const RARITY_THRESHOLDS = {
-  legendary: 100000,
-  epic: 50000,
-  rare: 25000,
-  uncommon: 10000,
+  legendary: 25000,
+  epic: 10000,
+  rare: 5000,
+  uncommon: 1000,
   common: 0,
 };
 

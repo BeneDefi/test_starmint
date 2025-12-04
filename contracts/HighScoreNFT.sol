@@ -35,10 +35,11 @@ contract HighScoreNFT is ERC721, ERC721Enumerable, Ownable, ReentrancyGuard, Pau
     address public constant ETH_USD_FEED = 0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70;
     
     // Rarity thresholds (score-based)
-    uint256 public constant LEGENDARY_THRESHOLD = 100000;
-    uint256 public constant EPIC_THRESHOLD = 50000;
-    uint256 public constant RARE_THRESHOLD = 25000;
-    uint256 public constant UNCOMMON_THRESHOLD = 10000;
+    // Updated to match frontend: Legendary 25k+, Epic 10k+, Rare 5k+, Uncommon 1k+
+    uint256 public constant LEGENDARY_THRESHOLD = 25000;
+    uint256 public constant EPIC_THRESHOLD = 10000;
+    uint256 public constant RARE_THRESHOLD = 5000;
+    uint256 public constant UNCOMMON_THRESHOLD = 1000;
 
     // ========== STATE VARIABLES ==========
     
