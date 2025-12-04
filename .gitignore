@@ -1,0 +1,21 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+.env
+
+# Foundry
+out/
+cache/
+broadcast/
+artifacts/
+
+# Hardhat
+cache_hardhat/
+artifacts/
+
+# Test coverage
+coverage/
+coverage.json

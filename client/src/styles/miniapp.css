@@ -1,0 +1,229 @@
+/* Mini App specific styles */
+
+/* Achievement notification animations */
+@keyframes achievementSlideIn {
+    from {
+      transform: translateY(-100px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  
+  @keyframes achievementPulse {
+    0%, 100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+  }
+  
+  .achievement-notification {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    animation: achievementSlideIn 0.5s ease-out;
+  }
+  
+  .achievement-popup {
+    display: flex;
+    align-items: center;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 12px;
+    padding: 16px;
+    color: white;
+    max-width: 350px;
+    animation: achievementPulse 2s ease-in-out;
+  }
+  
+  .achievement-icon {
+    font-size: 2rem;
+    margin-right: 12px;
+    animation: achievementPulse 2s ease-in-out infinite;
+  }
+  
+  .achievement-text h3 {
+    margin: 0 0 4px 0;
+    font-size: 0.875rem;
+    color: #22c55e;
+    font-weight: 600;
+  }
+  
+  .achievement-text p {
+    margin: 0 0 4px 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  
+  .achievement-text span {
+    font-size: 0.75rem;
+    color: #06b6d4;
+    font-weight: 500;
+  }
+  
+  /* Mini App frame optimizations */
+  .miniapp-container {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+  }
+  
+  /* Mobile-first responsive design */
+  @media (max-width: 424px) {
+    .miniapp-container {
+      width: 100vw;
+      height: 100vh;
+    }
+    
+    .achievement-popup {
+      max-width: 90vw;
+      margin: 0 5vw;
+    }
+  }
+  
+  /* Desktop mini app size (424x695px) */
+  @media (min-width: 425px) {
+    .miniapp-container {
+      width: 424px;
+      height: 695px;
+      margin: 0 auto;
+    }
+  }
+  
+  /* Loading spinner for Mini App */
+  .miniapp-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background: linear-gradient(to bottom right, #0f172a, #1e3a8a, #0f172a);
+  }
+  
+  .miniapp-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(6, 182, 212, 0.3);
+    border-top: 4px solid #06b6d4;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  /* Social sharing animations */
+  .share-button {
+    transition: all 0.3s ease;
+  }
+  
+  .share-button:hover {
+    transform: scale(1.05);
+  }
+  
+  .share-button:active {
+    transform: scale(0.95);
+  }
+  
+  /* Leaderboard animations */
+  .leaderboard-entry {
+    transition: all 0.3s ease;
+  }
+  
+  .leaderboard-entry:hover {
+    transform: translateX(4px);
+    background: rgba(6, 182, 212, 0.1);
+  }
+  
+  /* Wallet connection button */
+  .wallet-button {
+    background: linear-gradient(45deg, #06b6d4, #0891b2);
+    transition: all 0.3s ease;
+  }
+  
+  .wallet-button:hover {
+    background: linear-gradient(45deg, #0891b2, #0e7490);
+    box-shadow: 0 4px 20px rgba(6, 182, 212, 0.3);
+  }
+  
+  /* Token rewards animation */
+  @keyframes tokenFloat {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+  
+  .token-reward {
+    animation: tokenFloat 2s ease-in-out infinite;
+  }
+  
+  /* Mini App specific button styles */
+  .miniapp-button {
+    background: rgba(6, 182, 212, 0.1);
+    border: 1px solid rgba(6, 182, 212, 0.3);
+    color: #06b6d4;
+    border-radius: 12px;
+    padding: 12px 16px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(8px);
+  }
+  
+  .miniapp-button:hover {
+    background: rgba(6, 182, 212, 0.2);
+    border-color: rgba(6, 182, 212, 0.6);
+    transform: translateY(-1px);
+  }
+  
+  .miniapp-button:active {
+    transform: translateY(0px);
+  }
+  
+  /* Frame-specific safe area handling */
+  .miniapp-safe-area {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  
+  /* High contrast mode support */
+  @media (prefers-contrast: high) {
+    .achievement-popup {
+      border: 2px solid #ffffff;
+      background: #000000;
+    }
+    
+    .miniapp-button {
+      border: 2px solid #06b6d4;
+    }
+  }
+  
+  /* Reduced motion support */
+  @media (prefers-reduced-motion: reduce) {
+    .achievement-notification,
+    .achievement-popup,
+    .achievement-icon,
+    .miniapp-spinner,
+    .share-button,
+    .leaderboard-entry,
+    .wallet-button,
+    .token-reward,
+    .miniapp-button {
+      animation: none;
+      transition: none;
+    }
+  }
