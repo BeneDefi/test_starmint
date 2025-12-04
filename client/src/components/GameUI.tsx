@@ -161,6 +161,11 @@ export default function GameUI({ onStart, onBackToMenu }: GameUIProps) {
   }
 
   if (gamePhase === "ended") {
+    const sessionData = useGameState.getState().sessionData;
+    const gameTime = sessionData.endTime 
+      ? sessionData.endTime - sessionData.startTime 
+      : Date.now() - sessionData.startTime;
+    
     return (
       <div className="absolute inset-0 flex items-center justify-center z-10">
         <Card className="w-full max-w-xs sm:max-w-sm mx-3 sm:mx-4 bg-black/80 border-red-500">
@@ -227,6 +232,8 @@ export default function GameUI({ onStart, onBackToMenu }: GameUIProps) {
           onClose={() => setShowShareModal(false)}
           score={score}
           level={level}
+          enemiesDefeated={sessionData.enemiesKilled}
+          gameTime={gameTime}
         />
       </div>
     );
