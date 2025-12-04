@@ -902,8 +902,354 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ========== HIGH SCORE NFT MINTING ENDPOINTS ==========
+
+  // Get NFT minting configuration
+  app.get('/api/nft/config', async (req: Request, res: Response) => {
+    try {
+      const stats = await storage.getNftStats?.();
+      
+      res.json({
+        contractAddress: process.env.HIGH_SCORE_NFT_ADDRESS || null,
+        chainId: 8453,
+        chainName: 'Base',
+        mintFeeUsd: 0.10,
+        rarityThresholds: {
+          common: 0,
+          uncommon: 10000,
+          rare: 25000,
+          epic: 50000,
+          legendary: 100000
+        },
+        isEnabled: !!process.env.HIGH_SCORE_NFT_ADDRESS,
+        stats: stats || {
+          totalMinted: 0,
+          highestScoreMinted: 0
+        }
+      });
+    } catch (error) {
+      console.error('NFT config error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Request mint signature for a high score
+  app.post('/api/nft/mint-request', [
+    body('score').isInt({ min: 1, max: 10000000 }).withMessage('Invalid score'),
+    body('level').isInt({ min: 1, max: 100 }).withMessage('Invalid level'),
+    body('enemiesDefeated').isInt({ min: 0, max: 1000000 }).withMessage('Invalid enemies count'),
+    body('gameTime').isInt({ min: 0, max: 7200000 }).withMessage('Invalid game time'),
+    body('walletAddress').matches(/^0x[a-fA-F0-9]{40}$/).withMessage('Invalid wallet address'),
+    body('gameSessionId').optional().isInt().withMessage('Invalid game session ID'),
+    body('screenshotHash').optional().isString().withMessage('Invalid screenshot hash'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { score, level, enemiesDefeated, gameTime, walletAddress, gameSessionId, screenshotHash } = req.body;
+
+      // Check if contract is deployed
+      if (!process.env.HIGH_SCORE_NFT_ADDRESS) {
+        return res.status(503).json({ error: 'NFT minting is not yet available' });
+      }
+
+      // Get or create user by wallet address (simplified for demo)
+      let user = await storage.getUserByWalletAddress?.(walletAddress);
+      if (!user) {
+        // Auto-create user for wallet
+        user = await storage.createUserForWallet?.(walletAddress);
+        if (!user) {
+          return res.status(400).json({ error: 'Could not create user for wallet' });
+        }
+      }
+
+      // Generate unique nonce
+      const nonce = Date.now().toString() + Math.random().toString(36).substring(2, 15);
+      
+      // Calculate signature expiration (30 minutes from now)
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+      // Get external URL for this score
+      const externalUrl = `${process.env.DOMAIN || 'https://starmint.game'}/score/${nonce}`;
+
+      // Create message hash for signing
+      const chainId = 8453; // Base mainnet
+      const messageData = {
+        player: walletAddress,
+        score,
+        level,
+        enemiesDefeated,
+        gameTime,
+        screenshotHash: screenshotHash ? `0x${screenshotHash.replace('0x', '')}` : '0x0000000000000000000000000000000000000000000000000000000000000000',
+        nonce: parseInt(nonce.substring(0, 13)),
+        chainId
+      };
+
+      // Sign the message (backend signature)
+      const signature = await signMintRequest(messageData);
+
+      // Store the mint request
+      const mintRequest = await storage.createNftMintRequest?.({
+        userId: user.id,
+        gameSessionId: gameSessionId || null,
+        score,
+        level,
+        enemiesDefeated,
+        gameTime,
+        screenshotHash: screenshotHash || null,
+        walletAddress,
+        nonce,
+        signature,
+        expiresAt,
+        status: 'pending'
+      });
+
+      // Get rarity based on score
+      const rarity = getRarity(score);
+
+      res.json({
+        success: true,
+        mintRequest: {
+          nonce: parseInt(nonce.substring(0, 13)),
+          signature,
+          expiresAt: expiresAt.toISOString(),
+          externalUrl,
+          screenshotHash: messageData.screenshotHash,
+          estimatedGas: '150000', // Estimated gas for minting
+          rarity
+        },
+        scoreData: {
+          score,
+          level,
+          enemiesDefeated,
+          gameTime,
+          rarity
+        }
+      });
+    } catch (error) {
+      console.error('Mint request error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Record completed NFT mint
+  app.post('/api/nft/mint-confirm', [
+    body('txHash').matches(/^0x[a-fA-F0-9]{64}$/).withMessage('Invalid transaction hash'),
+    body('tokenId').isInt({ min: 0 }).withMessage('Invalid token ID'),
+    body('nonce').notEmpty().withMessage('Nonce is required'),
+    body('mintFeeEth').isString().withMessage('Invalid mint fee'),
+    body('walletAddress').matches(/^0x[a-fA-F0-9]{40}$/).withMessage('Invalid wallet address'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { txHash, tokenId, nonce, mintFeeEth, walletAddress } = req.body;
+
+      // Find the mint request
+      const mintRequest = await storage.getNftMintRequestByNonce?.(nonce.toString());
+      if (!mintRequest) {
+        return res.status(404).json({ error: 'Mint request not found' });
+      }
+
+      if (mintRequest.status !== 'pending') {
+        return res.status(400).json({ error: 'Mint request already used' });
+      }
+
+      // Get user
+      const user = await storage.getUserByWalletAddress?.(walletAddress);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Calculate rarity and USD value
+      const rarity = getRarity(mintRequest.score);
+      const mintFeeUsd = '0.10'; // Fixed $0.10 fee
+
+      // Create NFT mint record
+      const nftMint = await storage.recordNftMint?.({
+        userId: user.id,
+        tokenId,
+        txHash,
+        score: mintRequest.score,
+        level: mintRequest.level,
+        enemiesDefeated: mintRequest.enemiesDefeated,
+        gameTime: mintRequest.gameTime,
+        rarity,
+        screenshotHash: mintRequest.screenshotHash,
+        mintFeeEth,
+        mintFeeUsd,
+        walletAddress,
+        chainId: 8453,
+        status: 'completed',
+        metadataUri: null, // On-chain metadata
+        externalUrl: `${process.env.DOMAIN || 'https://starmint.game'}/nft/${tokenId}`
+      });
+
+      // Update mint request status
+      await storage.updateNftMintRequestStatus?.(nonce.toString(), 'used');
+
+      // Update NFT stats
+      await storage.updateNftStats?.(mintRequest.score, mintFeeEth, mintFeeUsd, rarity);
+
+      res.json({
+        success: true,
+        nftMint: {
+          tokenId,
+          txHash,
+          score: mintRequest.score,
+          level: mintRequest.level,
+          rarity,
+          viewUrl: `https://basescan.org/token/${process.env.HIGH_SCORE_NFT_ADDRESS}?a=${tokenId}`,
+          openseaUrl: `https://opensea.io/assets/base/${process.env.HIGH_SCORE_NFT_ADDRESS}/${tokenId}`
+        }
+      });
+    } catch (error) {
+      console.error('Mint confirm error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get user's minted NFTs
+  app.get('/api/nft/mints/:walletAddress', [
+    param('walletAddress').matches(/^0x[a-fA-F0-9]{40}$/).withMessage('Invalid wallet address'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { walletAddress } = req.params;
+
+      const user = await storage.getUserByWalletAddress?.(walletAddress);
+      if (!user) {
+        return res.json({ mints: [] });
+      }
+
+      const mints = await storage.getUserNftMints?.(user.id);
+
+      res.json({
+        mints: mints || [],
+        total: mints?.length || 0
+      });
+    } catch (error) {
+      console.error('Get mints error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get NFT collection stats
+  app.get('/api/nft/stats', async (req: Request, res: Response) => {
+    try {
+      const stats = await storage.getNftStats?.();
+
+      res.json({
+        stats: stats || {
+          totalMinted: 0,
+          totalFeesCollectedEth: '0',
+          totalFeesCollectedUsd: '0',
+          commonMinted: 0,
+          uncommonMinted: 0,
+          rareMinted: 0,
+          epicMinted: 0,
+          legendaryMinted: 0,
+          highestScoreMinted: 0
+        }
+      });
+    } catch (error) {
+      console.error('Get NFT stats error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get current ETH price for mint fee calculation
+  app.get('/api/nft/mint-fee', async (req: Request, res: Response) => {
+    try {
+      // Fetch ETH price (simplified - in production use Chainlink or reliable API)
+      let ethPrice = 3500; // Default fallback
+      try {
+        const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+        if (response.ok) {
+          const data = await response.json();
+          ethPrice = data.ethereum?.usd || 3500;
+        }
+      } catch (e) {
+        console.warn('Could not fetch ETH price, using fallback');
+      }
+
+      const mintFeeUsd = 0.10;
+      const mintFeeEth = mintFeeUsd / ethPrice;
+
+      res.json({
+        mintFeeUsd,
+        mintFeeEth: mintFeeEth.toFixed(8),
+        mintFeeWei: Math.ceil(mintFeeEth * 1e18).toString(),
+        ethPrice,
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      console.error('Mint fee calculation error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
+}
+
+// Helper function to get rarity based on score
+function getRarity(score: number): string {
+  if (score >= 100000) return 'Legendary';
+  if (score >= 50000) return 'Epic';
+  if (score >= 25000) return 'Rare';
+  if (score >= 10000) return 'Uncommon';
+  return 'Common';
+}
+
+// Helper function to sign mint request (using ethers-style signing)
+async function signMintRequest(messageData: {
+  player: string;
+  score: number;
+  level: number;
+  enemiesDefeated: number;
+  gameTime: number;
+  screenshotHash: string;
+  nonce: number;
+  chainId: number;
+}): Promise<string> {
+  // Get the mint signer private key from environment
+  const signerPrivateKey = process.env.NFT_MINT_SIGNER_KEY;
+  
+  if (!signerPrivateKey) {
+    // For development/testing, return a placeholder signature
+    console.warn('NFT_MINT_SIGNER_KEY not set, using placeholder signature');
+    return '0x' + '0'.repeat(130);
+  }
+
+  try {
+    // Create the message hash matching the contract's expected format
+    const { createHash } = await import('crypto');
+    const ethers = await import('ethers');
+    
+    // Encode the message the same way as the contract
+    const messageHash = ethers.solidityPackedKeccak256(
+      ['address', 'uint256', 'uint256', 'uint256', 'uint256', 'bytes32', 'uint256', 'uint256'],
+      [
+        messageData.player,
+        messageData.score,
+        messageData.level,
+        messageData.enemiesDefeated,
+        messageData.gameTime,
+        messageData.screenshotHash,
+        messageData.nonce,
+        messageData.chainId
+      ]
+    );
+
+    // Create wallet and sign
+    const wallet = new ethers.Wallet(signerPrivateKey);
+    const signature = await wallet.signMessage(ethers.getBytes(messageHash));
+    
+    return signature;
+  } catch (error) {
+    console.error('Error signing mint request:', error);
+    // Return placeholder for development
+    return '0x' + '0'.repeat(130);
+  }
 }
 
 // Game state validation function

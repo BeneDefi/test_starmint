@@ -185,3 +185,77 @@ export const insertPointsRedemptionSchema = createInsertSchema(pointsRedemptions
 export type InsertSwapHistory = z.infer<typeof insertSwapHistorySchema>;
 export type InsertSwapPoints = z.infer<typeof insertSwapPointsSchema>;
 export type InsertPointsRedemption = z.infer<typeof insertPointsRedemptionSchema>;
+
+// ========== HIGH SCORE NFT SYSTEM TABLES ==========
+
+// NFT minting records - tracks all high score NFT mints
+export const nftMints = pgTable("nft_mints", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  tokenId: integer("token_id").notNull(),
+  txHash: text("tx_hash").notNull().unique(),
+  score: integer("score").notNull(),
+  level: integer("level").notNull(),
+  enemiesDefeated: integer("enemies_defeated").notNull(),
+  gameTime: integer("game_time").notNull(), // in milliseconds
+  rarity: text("rarity").notNull(), // Common, Uncommon, Rare, Epic, Legendary
+  screenshotHash: text("screenshot_hash"), // IPFS hash for screenshot verification
+  mintFeeEth: text("mint_fee_eth").notNull(), // ETH amount paid for minting
+  mintFeeUsd: text("mint_fee_usd").notNull(), // USD value at time of minting
+  walletAddress: text("wallet_address").notNull(),
+  chainId: integer("chain_id").default(8453).notNull(), // Base mainnet
+  status: text("status").default("completed").notNull(), // pending, completed, failed
+  metadataUri: text("metadata_uri"), // On-chain metadata URI
+  externalUrl: text("external_url"), // Link to view score details
+  mintedAt: timestamp("minted_at").defaultNow().notNull(),
+});
+
+// Pending mint requests (before on-chain confirmation)
+export const nftMintRequests = pgTable("nft_mint_requests", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  gameSessionId: integer("game_session_id").references(() => gameSessions.id),
+  score: integer("score").notNull(),
+  level: integer("level").notNull(),
+  enemiesDefeated: integer("enemies_defeated").notNull(),
+  gameTime: integer("game_time").notNull(),
+  screenshotHash: text("screenshot_hash"),
+  walletAddress: text("wallet_address").notNull(),
+  nonce: text("nonce").notNull().unique(), // Unique nonce for signature
+  signature: text("signature").notNull(), // Backend signature for verification
+  expiresAt: timestamp("expires_at").notNull(), // Signature expiration
+  status: text("status").default("pending").notNull(), // pending, used, expired
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// NFT collection stats
+export const nftStats = pgTable("nft_stats", {
+  id: serial("id").primaryKey(),
+  totalMinted: integer("total_minted").default(0).notNull(),
+  totalFeesCollectedEth: text("total_fees_collected_eth").default("0").notNull(),
+  totalFeesCollectedUsd: text("total_fees_collected_usd").default("0").notNull(),
+  commonMinted: integer("common_minted").default(0).notNull(),
+  uncommonMinted: integer("uncommon_minted").default(0).notNull(),
+  rareMinted: integer("rare_minted").default(0).notNull(),
+  epicMinted: integer("epic_minted").default(0).notNull(),
+  legendaryMinted: integer("legendary_minted").default(0).notNull(),
+  highestScoreMinted: integer("highest_score_minted").default(0).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type NftMint = typeof nftMints.$inferSelect;
+export type NftMintRequest = typeof nftMintRequests.$inferSelect;
+export type NftStats = typeof nftStats.$inferSelect;
+
+export const insertNftMintSchema = createInsertSchema(nftMints).omit({
+  id: true,
+  mintedAt: true,
+});
+
+export const insertNftMintRequestSchema = createInsertSchema(nftMintRequests).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertNftMint = z.infer<typeof insertNftMintSchema>;
+export type InsertNftMintRequest = z.infer<typeof insertNftMintRequestSchema>;

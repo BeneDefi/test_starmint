@@ -12,6 +12,9 @@ import {
   swapHistory,
   swapPoints,
   pointsRedemptions,
+  nftMints,
+  nftMintRequests,
+  nftStats,
   type User, 
   type InsertUser, 
   type HighScore,
@@ -24,7 +27,12 @@ import {
   type SwapPoints,
   type PointsRedemption,
   type InsertSwapHistory,
-  type InsertSwapPoints
+  type InsertSwapPoints,
+  type NftMint,
+  type NftMintRequest,
+  type NftStats,
+  type InsertNftMint,
+  type InsertNftMintRequest
 } from "@shared/schema";
 
 
@@ -673,6 +681,123 @@ export class MemStorage implements IStorage {
 
   async getPointsRedemptions(userId: number, limit?: number): Promise<PointsRedemption[]> {
     return [];
+  }
+
+  // ========== NFT MINTING METHODS ==========
+
+  async getUserByWalletAddress(walletAddress: string): Promise<User | undefined> {
+    // For now, search by username matching wallet address
+    const result = await db.select().from(users).where(eq(users.username, walletAddress.toLowerCase())).limit(1);
+    return result[0];
+  }
+
+  async createUserForWallet(walletAddress: string): Promise<User> {
+    const result = await db.insert(users).values({
+      username: walletAddress.toLowerCase(),
+      password: 'wallet-auth', // Wallet users don't use password auth
+      displayName: `Player ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`,
+    }).returning();
+    
+    const newUser = result[0];
+    
+    // Initialize player stats
+    await db.insert(playerStats).values({
+      userId: newUser.id,
+      totalScore: 0,
+      highScore: 0,
+      enemiesDestroyed: 0,
+      gamesPlayed: 0,
+      timePlayedMinutes: 0,
+      streakDays: 1,
+      socialShares: 0,
+      friendsInvited: 0,
+    });
+    
+    return newUser;
+  }
+
+  async createNftMintRequest(data: InsertNftMintRequest): Promise<NftMintRequest> {
+    const result = await db.insert(nftMintRequests).values(data).returning();
+    return result[0];
+  }
+
+  async getNftMintRequestByNonce(nonce: string): Promise<NftMintRequest | undefined> {
+    const result = await db.select().from(nftMintRequests).where(eq(nftMintRequests.nonce, nonce)).limit(1);
+    return result[0];
+  }
+
+  async updateNftMintRequestStatus(nonce: string, status: string): Promise<void> {
+    await db.update(nftMintRequests)
+      .set({ status })
+      .where(eq(nftMintRequests.nonce, nonce));
+  }
+
+  async recordNftMint(data: InsertNftMint): Promise<NftMint> {
+    const result = await db.insert(nftMints).values(data).returning();
+    return result[0];
+  }
+
+  async getUserNftMints(userId: number): Promise<NftMint[]> {
+    return await db.select()
+      .from(nftMints)
+      .where(eq(nftMints.userId, userId))
+      .orderBy(desc(nftMints.mintedAt));
+  }
+
+  async getNftStats(): Promise<NftStats | undefined> {
+    const result = await db.select().from(nftStats).limit(1);
+    if (result.length === 0) {
+      // Initialize stats if not exists
+      const initResult = await db.insert(nftStats).values({
+        totalMinted: 0,
+        totalFeesCollectedEth: '0',
+        totalFeesCollectedUsd: '0',
+        commonMinted: 0,
+        uncommonMinted: 0,
+        rareMinted: 0,
+        epicMinted: 0,
+        legendaryMinted: 0,
+        highestScoreMinted: 0,
+      }).returning();
+      return initResult[0];
+    }
+    return result[0];
+  }
+
+  async updateNftStats(score: number, feeEth: string, feeUsd: string, rarity: string): Promise<void> {
+    const currentStats = await this.getNftStats();
+    if (!currentStats) return;
+
+    const updates: Partial<NftStats> = {
+      totalMinted: currentStats.totalMinted + 1,
+      totalFeesCollectedEth: (parseFloat(currentStats.totalFeesCollectedEth) + parseFloat(feeEth)).toString(),
+      totalFeesCollectedUsd: (parseFloat(currentStats.totalFeesCollectedUsd) + parseFloat(feeUsd)).toString(),
+      highestScoreMinted: Math.max(currentStats.highestScoreMinted, score),
+      updatedAt: new Date(),
+    };
+
+    // Update rarity counts
+    switch (rarity) {
+      case 'Common':
+        updates.commonMinted = currentStats.commonMinted + 1;
+        break;
+      case 'Uncommon':
+        updates.uncommonMinted = currentStats.uncommonMinted + 1;
+        break;
+      case 'Rare':
+        updates.rareMinted = currentStats.rareMinted + 1;
+        break;
+      case 'Epic':
+        updates.epicMinted = currentStats.epicMinted + 1;
+        break;
+      case 'Legendary':
+        updates.legendaryMinted = currentStats.legendaryMinted + 1;
+        break;
+    }
+
+    await db.update(nftStats)
+      .set(updates)
+      .where(eq(nftStats.id, currentStats.id));
   }
 }
 
