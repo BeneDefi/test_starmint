@@ -426,17 +426,18 @@ contract HighScoreNFT is ERC721, ERC721Enumerable, Ownable, ReentrancyGuard, Pau
     }
 
     function formatGameTime(uint256 ms) internal pure returns (string memory) {
-        uint256 totalSeconds = ms / 1000;
-        uint256 minutes = totalSeconds / 60;
-        uint256 seconds = totalSeconds % 60;
+    uint256 totalSeconds = ms / 1000;
+    uint256 numMinutes = totalSeconds / 60;
+    uint256 numSeconds = totalSeconds % 60; 
+    
+    string memory minStr = numMinutes.toString();
+    string memory secStr = numSeconds < 10 
+        ? string(abi.encodePacked("0", numSeconds.toString()))
+        : numSeconds.toString();
         
-        string memory minStr = minutes.toString();
-        string memory secStr = seconds < 10 
-            ? string(abi.encodePacked("0", seconds.toString()))
-            : seconds.toString();
-            
-        return string(abi.encodePacked(minStr, ":", secStr));
-    }
+    return string(abi.encodePacked(minStr, ":", secStr));
+}
+
 
     function bytes32ToString(bytes32 _bytes32) internal pure returns (string memory) {
         bytes memory bytesArray = new bytes(64);

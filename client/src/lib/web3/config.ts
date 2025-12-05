@@ -37,3 +37,6 @@ export const BASE_NETWORK = {
   explorerUrl: 'https://basescan.org',
   rpcUrl: 'https://mainnet.base.org',
 };
+
+// SwapRouterExtension contract on Base mainnet
+export const SWAP_ROUTER_ADDRESS = '0xAC134dd1D5b1C1cB516f7589e8a492f01e23Fe9e' as const;

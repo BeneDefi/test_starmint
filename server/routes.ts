@@ -996,7 +996,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ],
       chainId: 8453,
       chainName: 'Base',
-      swapRouterAddress: null, // Set after deployment
+       swapRouterAddress: '0xAC134dd1D5b1C1cB516f7589e8a492f01e23Fe9e',
       feeStructure: {
         minimumSwapUsd: 0.10,
         flatFeeUsd: 0.10,
