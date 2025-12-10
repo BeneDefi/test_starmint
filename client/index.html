@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="fc:miniapp" content='{
+  "version": "next",
+  "imageUrl": "https://i.imgur.com/g0efTKV.jpeg",
+  "button": {
+    "title": "Play Game",
+    "action": {
+      "type": "launch_miniapp",
+      "name": "Space Shooter Game",
+      "url": "https://starmint.onrender.com/"
+    }
+  }
+}' />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+  <title>Starmint Classic Space Shooter</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      touch-action: none;
+      background: #000;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

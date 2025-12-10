@@ -1,0 +1,201 @@
+/* High Contrast Mode */
+.high-contrast {
+    --primary: #ffffff;
+    --background: #000000;
+    --secondary: #ffff00;
+    --accent: #00ffff;
+    --text: #ffffff;
+    --border: #ffffff;
+  }
+  
+  .high-contrast * {
+    border-color: var(--border) !important;
+  }
+  
+  .high-contrast button {
+    background: var(--background) !important;
+    color: var(--text) !important;
+    border: 2px solid var(--border) !important;
+  }
+  
+  .high-contrast button:hover {
+    background: var(--secondary) !important;
+    color: var(--background) !important;
+  }
+  
+  /* Reduced Motion */
+  .reduce-motion * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .reduce-motion *::before,
+  .reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  /* Font Size Scaling */
+  :root {
+    --font-scale: 1;
+  }
+  
+  * {
+    font-size: calc(var(--base-font-size, 1rem) * var(--font-scale));
+  }
+  
+  /* Keyboard Navigation */
+  .keyboard-only *:focus {
+    outline: 3px solid #00ffff !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 3px rgba(0, 255, 255, 0.3) !important;
+  }
+  
+  .keyboard-only button:focus,
+  .keyboard-only input:focus,
+  .keyboard-only select:focus,
+  .keyboard-only textarea:focus {
+    transform: scale(1.05);
+    z-index: 100;
+  }
+  
+  /* Screen Reader Only Content */
+  .sr-only {
+    position: absolute !important;
+    left: -10000px !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+  }
+  
+  /* Color Blind Mode Filters */
+  [data-color-blind-mode="protanopia"] {
+    filter: url('#protanopia-filter');
+  }
+  
+  [data-color-blind-mode="deuteranopia"] {
+    filter: url('#deuteranopia-filter');
+  }
+  
+  [data-color-blind-mode="tritanopia"] {
+    filter: url('#tritanopia-filter');
+  }
+  
+  /* Focus Management */
+  .game-focus-ring {
+    position: relative;
+  }
+  
+  .game-focus-ring::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    right: -3px;
+    bottom: -3px;
+    border: 2px solid transparent;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  
+  .keyboard-only .game-focus-ring:focus::after {
+    border-color: #00ffff;
+    opacity: 1;
+  }
+  
+  /* Game-specific Accessibility */
+  .game-ui-overlay {
+    position: relative;
+    z-index: 1000;
+  }
+  
+  .accessibility-announcer {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  
+  /* Touch target sizing for mobile accessibility */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px;
+  }
+  
+  /* High contrast game elements */
+  .high-contrast .game-canvas {
+    border: 3px solid #ffffff;
+  }
+  
+  .high-contrast .player-ship {
+    filter: brightness(1.5) contrast(2);
+  }
+  
+  .high-contrast .enemy-ship {
+    filter: hue-rotate(60deg) brightness(1.5) contrast(2);
+  }
+  
+  /* Motion preference overrides */
+  @media (prefers-reduced-motion: reduce) {
+    .particle-effect {
+      animation: none !important;
+    }
+    
+    .explosion-effect {
+      animation: none !important;
+    }
+    
+    .power-up-glow {
+      animation: none !important;
+    }
+  }
+  
+  /* Color blind safe color palette */
+  .colorblind-safe-red { color: #d73027; }
+  .colorblind-safe-blue { color: #4575b4; }
+  .colorblind-safe-green { color: #74add1; }
+  .colorblind-safe-yellow { color: #fee090; }
+  .colorblind-safe-orange { color: #f46d43; }
+  .colorblind-safe-purple { color: #9970ab; }
+  
+  /* Focus indicators for game elements */
+  .game-button:focus-visible {
+    outline: 3px solid #00ffff;
+    outline-offset: 2px;
+  }
+  
+  /* Accessibility tooltips */
+  .a11y-tooltip {
+    position: relative;
+  }
+  
+  .a11y-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+    z-index: 1000;
+  }
+  
+  .a11y-tooltip:hover::after,
+  .a11y-tooltip:focus::after {
+    opacity: 1;
+    visibility: visible;
+  }

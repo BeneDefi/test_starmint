@@ -1,0 +1,91 @@
+there's a feature where users/players can either mint there high score or post it on farcaster, use the below instruction to update the nft mint feature
+use the below explanation to effect the chaneges update the existing
+Deep search codebase, think harder to fully comprehend my explanation 
+
+Importantly implement effectively, efficiently error handlings, security and much more
+
+Please I'll like to put all sensitive details to use in deployment of the smart contract in my .env file
+
+‎The below update is for the NFT players mint their high scores on Base mainnet.
+‎Deep search code base, think harder to completely fully comprehend what I am saying, for a top notch high score nft on base, i'd want metadata that tells the full story without being bloated. erc721 standard means json at ipfs or similar, with a name, description, image (maybe dynamic svg based on score), and attributes array for the key details. here's a solid template to start with:
+‎
+‎{
+‎
+‎"name": "space shooter high score #{{tokenId}}",
+‎
+‎"description": "proof of your epic run in the space shooter mini app. score: {{score}} points. achieved on {{date}}. part of the base ecosystem.",
+‎
+‎"image": "ipfs://your-base-uri/{{tokenId}}.png", // or svg for dynamic visuals
+‎
+‎"attributes": 
+‎
+‎{
+‎
+‎"traittype": "score",
+‎
+‎"value": {{score}},
+‎
+‎"displaytype": "number"
+‎
+‎},
+‎
+‎{
+‎
+‎"traittype": "date achieved",
+‎
+‎"value": "{{date}}",
+‎
+‎"displaytype": "date"
+‎
+‎},
+‎
+‎{
+‎
+‎"traittype": "level reached",
+‎
+‎"value": {{level}}
+‎
+‎},
+‎
+‎{
+‎
+‎"traittype": "enemies defeated",
+‎
+‎"value": {{enemies}}
+‎
+‎},
+‎
+‎{
+‎
+‎"traittype": "screenshot hash",
+‎
+‎"value": "{{hash}}" // for verification
+‎
+‎},
+‎
+‎{
+‎
+‎"traittype": "rarity",
+‎
+‎"value": "{{rarity}}" // based on score tiers
+‎
+‎}
+‎
+‎,
+‎
+‎"externalurl": "https://your-miniapp-url/score/{{tokenId}}",
+‎
+‎"backgroundcolor": "000000"
+‎
+‎}
+‎
+‎ for the image, generate procedurally, like a starfield with score overlay. pin to ipfs via pinata or nft.storage for reliability. in minting via Foundry, hook this into the metadata uri in the contract.
+‎
+‎Strictly use foundry to write and deploy the Smart contract.
+
+100% execute state of the art industry standard top notch swap functionalities and features 
+
+Ultimately provided a beginner friendly step by step guide on deploying the smart contract,
+‎With a detailed, full beginner friendly step by step guide on deploying on Base mainnet
+
+100% deliver fully, functional, effectively, efficiently, state of the art, industry standard, top notch
